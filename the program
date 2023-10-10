@@ -1,0 +1,87 @@
+import pathlib
+import numpy as np
+import tensorflow as tf
+
+batchSize = 32
+imgHeight = 200
+imgWidth = 200
+classNames = ['cat', 'dog']
+numClasses = len(classNames)
+
+
+def dataSet(p):
+    dataDir = p
+    dataDir = pathlib.Path(dataDir).with_suffix('')
+    Train = tf.keras.utils.image_dataset_from_directory(
+        dataDir,
+        validation_split=0.2,
+        subset="training",
+        seed=123,
+        image_size=(imgHeight, imgWidth),
+        batch_size=batchSize)
+
+    val = tf.keras.utils.image_dataset_from_directory(
+        dataDir,
+        validation_split=0.2,
+        subset="validation",
+        seed=123,
+        image_size=(imgHeight, imgWidth),
+        batch_size=batchSize)
+
+    AUTOTUNE = tf.data.AUTOTUNE
+
+    Train = Train.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
+    val = val.cache().prefetch(buffer_size=AUTOTUNE)
+
+    return Train, val
+
+
+def net():
+    net_ = tf.keras.models.Sequential([
+        tf.keras.layers.RandomFlip("horizontal", input_shape=(imgHeight, imgWidth, 3)),
+        tf.keras.layers.RandomRotation(0.1),
+        tf.keras.layers.RandomZoom(0.1),
+        tf.keras.layers.Rescaling(1. / 255),
+        tf.keras.layers.Conv2D(16, 2, padding='same', activation='relu'),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Conv2D(32, 2, padding='same', activation='relu'),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Conv2D(64, 2, padding='same', activation='relu'),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Dropout(0.1),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(numClasses)
+    ])
+
+    net_.compile(optimizer='adam', loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                 metrics=['accuracy'])
+    return net_
+
+
+def train():
+    # path = 'D:/python/twin/flower_photos'
+    path = 'D:/python/twin/CATDOG/data'
+    trainDs, valDs = dataSet(path)
+    model = net()
+    model.fit(trainDs, validation_data=valDs, epochs=15)
+    model.save('D:/python/twin/cat_dog.h5')
+
+
+def pre():
+    model = tf.keras.models.load_model('D:/python/twin/cat_dog.h5')
+    testImg = 'D:/python/twin/cat1.jpg'
+    img = tf.keras.utils.load_img(testImg, target_size=(imgHeight, imgWidth))
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = tf.expand_dims(img_array, 0)  # Create a batch
+    predictions = model.predict(img_array)
+    print(predictions)
+    score = tf.nn.softmax(predictions[0])
+    print(score)
+    print("Most likely belongs to {} with a {:.2f} percent confidence.".format(classNames[np.argmax(score)],
+                                                                               100 * np.max(score)))
+
+
+if __name__ == '__main__':
+    train()
+    # pre()
